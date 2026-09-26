@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HMC Visualizer - Everything App</title>
+    <style>
+        :root {
+            --bg: #10141c;
+            --panel: #1a2130;
+            --border: #2c3a52;
+            --text: #dce6f5;
+            --accent: #4fc3f7;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        header {
+            width: 100%;
+            padding: 14px 24px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+        header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+        main {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 16px;
+            justify-content: center;
+        }
+        #stage {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        canvas { display: block; background: #0b0f16; border-radius: 6px; }
+        #controls {
+            width: 320px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .row { display: flex; gap: 8px; }
+        .row > * { flex: 1; }
+        label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 4px;
+            color: #9fb2cc;
+        }
+        select, input[type="range"] { width: 100%; }
+        select {
+            background: #0e1520;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 6px;
+        }
+        button {
+            background: var(--accent);
+            color: #06263a;
+            font-weight: 600;
+            border: none;
+            border-radius: 4px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button.secondary {
+            background: #2c3a52;
+            color: var(--text);
+        }
+        button:hover { filter: brightness(1.1); }
+        #stats {
+            font-size: 13px;
+            line-height: 1.6;
+            background: #0e1520;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px;
+        }
+        #stats b { color: var(--accent); }
+        #warn { color: #ff8a65; font-size: 12px; min-height: 16px; }
+        .checkline { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .legend { font-size: 12px; color: #9fb2cc; line-height: 1.5; }
+        .legend .swatch {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border-radius: 2px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Hamiltonian Monte Carlo &mdash; the puck on the hill</h1>
+        <a href="/index.html">&larr; back to chat</a>
+    </header>
+    <main>
+        <div id="stage"><canvas id="canvas" width="640" height="640"></canvas></div>
+        <div id="controls">
+            <div>
+                <label for="dist">Target distribution (potential energy U(q) = &minus;log p(q))</label>
+                <select id="dist">
+                    <option value="correlated">Correlated Gaussian (elongated valley)</option>
+                    <option value="bimodal" selected>Bimodal mixture (two valleys)</option>
+                    <option value="banana">Banana / Rosenbrock (curved canyon)</option>
+                </select>
+            </div>
+            <div>
+                <label for="stepsize">Leapfrog step size &epsilon;: <span id="epsVal">0.12</span></label>
+                <input type="range" id="stepsize" min="0.01" max="0.4" step="0.005" value="0.12">
+            </div>
+            <div>
+                <label for="nsteps">Leapfrog steps per trajectory L: <span id="LVal">40</span></label>
+                <input type="range" id="nsteps" min="1" max="120" step="1" value="40">
+            </div>
+            <div>
+                <label for="speed">Animation speed: <span id="speedVal">1</span>&times;</label>
+                <input type="range" id="speed" min="1" max="10" step="1" value="1">
+            </div>
+            <div class="row">
+                <button id="runBtn">Run</button>
+                <button id="stepBtn" class="secondary">One iteration</button>
+            </div>
+            <div class="row">
+                <button id="resetBtn" class="secondary">Reset puck</button>
+                <button id="clearBtn" class="secondary">Clear trail</button>
+            </div>
+            <div class="checkline"><input type="checkbox" id="showField" checked> <label for="showField" style="margin:0">Show guiding field &minus;&nabla;U(q) (pilot-wave overlay)</label></div>
+            <div id="stats">
+                Iteration: <b id="it">0</b> &nbsp; Accepted: <b id="acc">0/0</b> (<b id="accRate">&ndash;</b>)<br>
+                U(q): <b id="uVal">&ndash;</b> &nbsp; K(p): <b id="kVal">&ndash;</b> &nbsp; H: <b id="hVal">&ndash;</b><br>
+                q = (<b id="qx">&ndash;</b>, <b id="qy">&ndash;</b>) &nbsp; p = (<b id="px">&ndash;</b>, <b id="py">&ndash;</b>)
+            </div>
+            <div id="warn"></div>
+            <div class="legend">
+                <span class="swatch" style="background:#0b2545"></span> deep valley (high density)
+                &nbsp;<span class="swatch" style="background:#7a1f2b"></span> high hill (low density)<br>
+                <span class="swatch" style="background:#4fc3f7"></span> puck (current state q)
+                &nbsp;<span class="swatch" style="background:#ffd54f"></span> momentum p<br>
+                <span class="swatch" style="background:#81c784"></span> accepted trajectory
+                &nbsp;<span class="swatch" style="background:#ef5350"></span> rejected proposal<br>
+                Gray arrows: local drift of the flow &mdash; the deterministic &ldquo;pilot wave&rdquo; guiding the puck.
+            </div>
+        </div>
+    </main>
+    <script>
+    (function () {
+        'use strict';
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+
+        const SCALE = 2.4;
+        const BOUND = 3.2;
+
+        function toPx(q) { return { x: W / 2 + q[0] * (W / 2) / BOUND, y: H / 2 - q[1] * (H / 2) / BOUND }; }
+        function toWorld(px, py) { return [ (px - W / 2) * BOUND / (W / 2), -(py - H / 2) * BOUND / (H / 2) ]; }
+
+        const distributions = {
+            correlated: {
+                name: 'Correlated Gaussian',
+                U: function (q) {
+                    const s = q[0] + q[1], d = q[0] - q[1];
+                    return 0.25 * (s * s / 3.2 + d * d / 0.4);
+                },
+                gradU: function (q, out) {
+                    const s = q[0] + q[1], d = q[0] - q[1];
+                    out[0] = 0.25 * (2 * s / 3.2 + 2 * d / 0.4);
+                    out[1] = 0.25 * (2 * s / 3.2 - 2 * d / 0.4);
+                    return out;
+                }
+            },
+            bimodal: {
+                name: 'Bimodal mixture',
+                U: function (q) {
+                    const a = gauss2(q, -1.4, 0, 0.55, 0.55, -0.35);
+                    const b = gauss2(q, 1.4, 0.4, 0.55, 0.8, 0.4);
+                    const m = Math.max(a, b);
+                    return -m - Math.log(Math.exp(a - m) + Math.exp(b - m));
+                },
+                gradU: gradMixture
+            },
+            banana: {
+                name: 'Rosenbrock banana',
+                U: function (q) {
+                    const t = q[1] - q[0] * q[0];
+                    return 0.05 * (1 - q[0]) * (1 - q[0]) + 0.5 * t * t;
+                },
+                gradU: function (q, out) {
+                    const t = q[1] - q[0] * q[0];
+                    out[0] = -0.1 * (1 - q[0]) - 2 * q[0] * t;
+                    out[1] = t;
+                    return out;
+                }
+            }
+        };
+
+        function gauss2(q, mx, my, sx, sy, rot) {
+            const dx = q[0] - mx, dy = q[1] - my;
+            const c = Math.cos(rot), s = Math.sin(rot);
+            const u = c * dx + s * dy, v = -s * dx + c * dy;
+            return -0.5 * (u * u / (sx * sx) + v * v / (sy * sy)) - Math.log(2 * Math.PI * sx * sy);
+        }
+
+        function gradMixture(q, out) {
+            const comps = [
+                { mx: -1.4, my: 0, sx: 0.55, sy: 0.55, rot: -0.35 },
+                { mx: 1.4, my: 0.4, sx: 0.55, sy: 0.8, rot: 0.4 }
+            ];
+            let wa = Math.exp(gauss2(q, comps[0].mx, comps[0].my, comps[0].sx, comps[0].sy, comps[0].rot));
+            let wb = Math.exp(gauss2(q, comps[1].mx, comps[1].my, comps[1].sx, comps[1].sy, comps[1].rot));
+            const tot = wa + wb;
+            wa /= tot; wb /= tot;
+            let gx = 0, gy = 0;
+            for (let i = 0; i < 2; i++) {
+                const cm = comps[i], w = i === 0 ? wa : wb;
+                const dx = q[0] - cm.mx, dy = q[1] - cm.my;
+                const c = Math.cos(cm.rot), s = Math.sin(cm.rot);
+                const u = c * dx + s * dy, v = -s * dx + c * dy;
+                const du = u / (cm.sx * cm.sx), dv = v / (cm.sy * cm.sy);
+                gx += w * (c * du - s * dv);
+                gy += w * (s * du + c * dv);
+            }
+            out[0] = gx;
+            out[1] = gy;
+            return out;
+        }
+
+        let dist = distributions.bimodal;
+        let q = [-2.2, 1.8];
+        let p = [0, 0];
+        let running = false;
+        let animating = false;
+        let trail = [];
+        let proposals = [];
+        let iter = 0, accepted = 0, attempted = 0;
+        let eps = 0.12, L = 40, speed = 1;
+
+        const tmpG = [0, 0];
+
+        function sampleMomentum() {
+            p[0] = randn(); p[1] = randn();
+        }
+        function randn() {
+            let u = 0, v = 0;
+            while (u === 0) u = Math.random();
+            while (v === 0) v = Math.random();
+            return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+        }
+
+        function kinetic() { return 0.5 * (p[0] * p[0] + p[1] * p[1]); }
+
+        function leapfrogTrace(q0, p0, epsLocal, LLocal) {
+            const pts = [];
+            let cq = [q0[0], q0[1]], cp = [p0[0], p0[1]];
+            dist.gradU(cq, tmpG);
+            cp[0] -= 0.5 * epsLocal * tmpG[0];
+            cp[1] -= 0.5 * epsLocal * tmpG[1];
+            for (let i = 0; i < LLocal; i++) {
+                cq[0] += epsLocal * cp[0];
+                cq[1] += epsLocal * cp[1];
+                dist.gradU(cq, tmpG);
+                const half = (i === LLocal - 1) ? 0.5 : 1.0;
+                cp[0] -= half * epsLocal * tmpG[0];
+                cp[1] -= half * epsLocal * tmpG[1];
+                pts.push({ q: [cq[0], cq[1]], p: [cp[0], cp[1]] });
+            }
+            cp[0] = -cp[0]; cp[1] = -cp[1];
+            return { pts: pts, q: cq, p: cp };
+        }
+
+        function hmcIteration() {
+            sampleMomentum();
+            const h0 = dist.U(q) + kinetic();
+            const res = leapfrogTrace(q, p, eps, L);
+            const h1 = dist.U(res.q) + kinetic2(res.p);
+            const dH = h1 - h0;
+            const accept = isFinite(dH) && Math.log(Math.random()) < -dH;
+            attempted++;
+            proposals.push({ pts: res.pts, accept: accept });
+            if (proposals.length > 40) proposals.shift();
+            if (accept) {
+                accepted++;
+                trail.push([q[0], q[1], res.q[0], res.q[1]]);
+                if (trail.length > 400) trail.shift();
+                q[0] = res.q[0]; q[1] = res.q[1];
+            }
+            p[0] = res.p[0]; p[1] = res.p[1];
+            iter++;
+            return { pts: res.pts, accept: accept, dH: dH };
+        }
+
+        function kinetic2(pp) { return 0.5 * (pp[0] * pp[0] + pp[1] * pp[1]); }
+
+        let potentialImg = null;
+
+        function renderPotential() {
+            const off = document.createElement('canvas');
+            off.width = W; off.height = H;
+            const octx = off.getContext('2d');
+            const img = octx.createImageData(W, H);
+            let uMin = Infinity, uMax = -Infinity;
+            const vals = new Float32Array(W * H);
+            for (let py = 0; py < H; py++) {
+                for (let px = 0; px < W; px++) {
+                    const u = dist.U(toWorld(px, py));
+                    vals[py * W + px] = u;
+                    if (u < uMin) uMin = u;
+                    if (u > uMax) uMax = u;
+                }
+            }
+            const cap = uMin + 8;
+            for (let i = 0; i < W * H; i++) {
+                let t = (Math.min(vals[i], cap) - uMin) / (cap - uMin);
+                t = Math.pow(t, 0.55);
+                const r = 11 + t * (122 - 11);
+                const g = 37 + t * (31 - 37);
+                const b = 69 + t * (43 - 69);
+                const j = i * 4;
+                img.data[j] = r; img.data[j + 1] = g; img.data[j + 2] = b; img.data[j + 3] = 255;
+            }
+            octx.putImageData(img, 0, 0);
+            potentialImg = off;
+        }
+
+        function drawField() {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(180,200,230,0.30)';
+            ctx.fillStyle = 'rgba(180,200,230,0.55)';
+            const step = 42;
+            for (let px = step / 2; px < W; px += step) {
+                for (let py = step / 2; py < H; py += step) {
+                    const w = toWorld(px, py);
+                    dist.gradU(w, tmpG);
+                    let vx = -tmpG[0], vy = -tmpG[1];
+                    const n = Math.hypot(vx, vy);
+                    if (n < 1e-6) continue;
+                    const len = Math.min(16, 4 + n * 6);
+                    vx = vx / n * len; vy = vy / n * len;
+                    const a = toPx(w);
+                    const b = { x: a.x + vx * (W / 2) / BOUND, y: a.y - vy * (H / 2) / BOUND };
+                    ctx.beginPath();
+                    ctx.moveTo(a.x, a.y);
+                    ctx.lineTo(b.x, b.y);
+                    ctx.stroke();
+                    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+                    ctx.beginPath();
+                    ctx.moveTo(b.x, b.y);
+                    ctx.lineTo(b.x - 5 * Math.cos(ang - 0.4), b.y - 5 * Math.sin(ang - 0.4));
+                    ctx.lineTo(b.x - 5 * Math.cos(ang + 0.4), b.y - 5 * Math.sin(ang + 0.4));
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawPath(pts, color, width, alpha) {
+            if (!pts || pts.length < 2) return;
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            const s = toPx(pts[0].q);
+            ctx.moveTo(s.x, s.y);
+            for (let i = 1; i < pts.length; i++) {
+                const e = toPx(pts[i].q);
+                ctx.lineTo(e.x, e.y);
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawTrail() {
+            ctx.save();
+            ctx.lineWidth = 2;
+            for (const seg of trail) {
+                ctx.strokeStyle = 'rgba(129,199,132,0.55)';
+                const a = toPx([seg[0], seg[1]]), b = toPx([seg[2], seg[3]]);
+                ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawPuck(pos, mom, color, scale) {
+            const c = toPx(pos);
+            ctx.save();
+            if (mom) {
+                const m = toPx([pos[0] + mom[0] * scale, pos[1] + mom[1] * scale]);
+                ctx.strokeStyle = '#ffd54f';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(c.x, c.y);
+                ctx.lineTo(m.x, m.y);
+                ctx.stroke();
+                const ang = Math.atan2(m.y - c.y, m.x - c.x);
+                ctx.fillStyle = '#ffd54f';
+                ctx.beginPath();
+                ctx.moveTo(m.x, m.y);
+                ctx.lineTo(m.x - 8 * Math.cos(ang - 0.4), m.y - 8 * Math.sin(ang - 0.4));
+                ctx.lineTo(m.x - 8 * Math.cos(ang + 0.4), m.y - 8 * Math.sin(ang + 0.4));
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 6, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        let livePath = null;
+        let liveIdx = 0;
+        let pendingResult = null;
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            if (potentialImg) ctx.drawImage(potentialImg, 0, 0);
+            if (document.getElementById('showField').checked) drawField();
+            drawTrail();
+            for (const pr of proposals) {
+                if (pr !== livePath) drawPath(pr.pts, pr.accept ? 'rgba(129,199,132,0.45)' : 'rgba(239,83,80,0.40)', 1.5, 1);
+            }
+            if (livePath) {
+                const upTo = livePath.pts.slice(0, liveIdx + 1);
+                drawPath(upTo, livePath.accept ? '#81c784' : '#ef5350', 2.5, 0.95);
+                const cur = upTo[upTo.length - 1];
+                drawPuck(cur.q, cur.p, livePath.accept ? '#4fc3f7' : '#ef9a9a', 0.06);
+            } else {
+                drawPuck(q, p, '#4fc3f7', 0.06);
+            }
+            updateStats();
+        }
+
+        function updateStats() {
+            document.getElementById('it').textContent = iter;
+            document.getElementById('acc').textContent = accepted + '/' + attempted;
+            document.getElementById('accRate').textContent = attempted ? (100 * accepted / attempted).toFixed(1) + '%' : '\u2013';
+            document.getElementById('uVal').textContent = fmt(dist.U(q));
+            document.getElementById('kVal').textContent = fmt(kinetic());
+            document.getElementById('hVal').textContent = fmt(dist.U(q) + kinetic());
+            document.getElementById('qx').textContent = fmt(q[0]);
+            document.getElementById('qy').textContent = fmt(q[1]);
+            document.getElementById('px').textContent = fmt(p[0]);
+            document.getElementById('py').textContent = fmt(p[1]);
+            const warn = document.getElementById('warn');
+            if (pendingResult && !isFinite(pendingResult.dH)) {
+                warn.textContent = 'Divergence: H overflowed. Reduce the step size \u03B5.';
+            } else if (pendingResult && pendingResult.dH > 4) {
+                warn.textContent = 'Large \u0394H = ' + pendingResult.dH.toFixed(1) + ' \u2014 integrator struggling; consider a smaller \u03B5.';
+            } else {
+                warn.textContent = '';
+            }
+        }
+
+        function fmt(x) { return Number(x).toFixed(2); }
+
+        function loop() {
+            if (animating) {
+                liveIdx += speed;
+                if (liveIdx >= livePath.pts.length - 1) {
+                    liveIdx = livePath.pts.length - 1;
+                    animating = false;
+                    livePath = null;
+                    pendingResult = null;
+                    if (running) {
+                        startIteration();
+                    }
+                }
+            } else if (running && !livePath) {
+                startIteration();
+            }
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function startIteration() {
+            const res = hmcIteration();
+            livePath = res;
+            liveIdx = 0;
+            pendingResult = res;
+            animating = true;
+        }
+
+        function bindRange(id, valId, setter) {
+            const el = document.getElementById(id);
+            const out = document.getElementById(valId);
+            el.addEventListener('input', function () {
+                out.textContent = el.value;
+                setter(parseFloat(el.value));
+            });
+        }
+
+        bindRange('stepsize', 'epsVal', function (v) { eps = v; });
+        bindRange('nsteps', 'LVal', function (v) { L = Math.round(v); });
+        bindRange('speed', 'speedVal', function (v) { speed = v; });
+
+        document.getElementById('runBtn').addEventListener('click', function () {
+            running = !running;
+            this.textContent = running ? 'Pause' : 'Run';
+            if (running && !animating) startIteration();
+        });
+        document.getElementById('stepBtn').addEventListener('click', function () {
+            running = false;
+            document.getElementById('runBtn').textContent = 'Run';
+            if (!animating) startIteration();
+        });
+        document.getElementById('resetBtn').addEventListener('click', function () {
+            running = false; animating = false; livePath = null; pendingResult = null;
+            document.getElementById('runBtn').textContent = 'Run';
+            q = [(Math.random() * 2 - 1) * 2.5, (Math.random() * 2 - 1) * 2.5];
+            p = [0, 0];
+            iter = 0; accepted = 0; attempted = 0;
+            updateStats();
+        });
+        document.getElementById('clearBtn').addEventListener('click', function () {
+            trail = []; proposals = [];
+        });
+        document.getElementById('dist').addEventListener('change', function () {
+            dist = distributions[this.value];
+            trail = []; proposals = [];
+            iter = 0; accepted = 0; attempted = 0;
+            renderPotential();
+        });
+
+        canvas.addEventListener('click', function (e) {
+            const rect = canvas.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (W / rect.width);
+            const py = (e.clientY - rect.top) * (H / rect.height);
+            q = toWorld(px, py);
+            p = [0, 0];
+        });
+
+        renderPotential();
+        updateStats();
+        requestAnimationFrame(loop);
+    })();
+    </script>
+</body>
+</html>

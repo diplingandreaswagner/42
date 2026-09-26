@@ -13,6 +13,16 @@
             height: 100vh;
             background-color: #f0f0f0;
         }
+        #nav {
+            position: fixed;
+            top: 10px;
+            right: 14px;
+            font-size: 14px;
+        }
+        #nav a {
+            color: #007bff;
+            text-decoration: none;
+        }
         #chat {
             width: 400px;
             height: 500px;
@@ -51,6 +61,7 @@
     </style>
 </head>
 <body>
+    <div id="nav"><a href="/hmc.html">HMC Visualizer</a></div>
     <div id="chat">
         <div id="messages"></div>
         <form id="form" action="">

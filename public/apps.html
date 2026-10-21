@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Everything App - Applications</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 16px;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #8b949e;
+            margin-bottom: 32px;
+        }
+        .apps {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+            max-width: 800px;
+            width: 100%;
+        }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 10px;
+            padding: 20px;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .card:hover {
+            border-color: #58a6ff;
+            transform: translateY(-2px);
+        }
+        .card .icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        .card h2 {
+            font-size: 1.1rem;
+            margin-bottom: 6px;
+        }
+        .card p {
+            font-size: 0.85rem;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧰 Everything App</h1>
+    <p class="subtitle">Applications disponibles</p>
+
+    <div class="apps">
+        <a class="card" href="/">
+            <div class="icon">💬</div>
+            <h2>Chat</h2>
+            <p>Chat en temps réel avec WebSocket</p>
+        </a>
+        <a class="card" href="/mandelbrot.html">
+            <div class="icon">🌀</div>
+            <h2>Fractale de Mandelbrot</h2>
+            <p>Exploreur interactif avec zoom infini</p>
+        </a>
+    </div>
+</body>
+</html>
